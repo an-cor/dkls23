@@ -70,11 +70,16 @@ async fn main() {
         let (sign, recid) = fini.unwrap();
 
         let hash = [1u8; 32];
+        println!("message hash: {:?}", hash);
+        println!("signature: {:?}", sign);
+        println!("recovery id: {:?}", recid);
+        println!("public key: {:?}", vk);
 
         let recid2 =
             RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
                 .unwrap();
 
+        println!("verification result: {}", recid == recid2);
         assert_eq!(recid, recid2);
     }
 }

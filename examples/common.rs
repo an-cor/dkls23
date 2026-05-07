@@ -126,6 +126,7 @@ pub mod shared {
     pub fn setup_dsg(
         shares: &[Arc<Keyshare>],
         chain_path: &str,
+        hash: [u8; 32],
     ) -> Vec<sl_dkls23::setup::sign::SetupMessage> {
         let chain_path = DerivationPath::from_str(chain_path).unwrap();
 
@@ -168,7 +169,7 @@ pub mod shared {
                     share.clone(),
                 )
                 .with_chain_path(chain_path.clone())
-                .with_hash([1; 32])
+                .with_hash(hash)
                 .with_ttl(Duration::from_secs(1000))
             })
             .collect::<Vec<_>>()
