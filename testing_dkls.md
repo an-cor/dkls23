@@ -1532,3 +1532,172 @@ cargo build --example sign_bench
 |  5 |  3 |                     1 | Random |     5.741547 |            0.821680 |          0.821680 | 13,877,248 bytes |
 |  5 |  3 |                     5 | Random |     5.652955 |            4.107222 |          0.821444 | 13,877,248 bytes |
 |  5 |  3 |                    10 | Random |     5.639343 |            8.227200 |          0.822720 | 13,877,248 bytes |
+
+# VMs running commands
+
+## VM configuration
+
+The first Jetstream2 VM used for DKLS23 testing and benchmarking.
+
+- Name: `dkls-test-2`
+- Image: `Featured-Ubuntu24`
+- Flavor: `m3.small`
+- SSH key: `angel-macbook`
+- Web desktop: `No`
+- Guacamole: `No`
+- Install OS updates: `Yes`
+- Network: `auto_allocated_network`
+- Public IP Address: `Automatic`
+
+The VM successfully launched after using `auto_allocated_network`. Using the `public` network initially caused network allocation failures.
+
+---
+
+## Connecting to the VM
+
+SSH was used to remotely access the Jetstream2 VM from the local MacBook terminal.
+
+```bash
+ssh exouser@149.165.155.184
+```
+
+After connecting successfully, commands executed in the terminal were running directly on the cloud VM instead of the local machine.
+
+---
+
+## Initial VM setup
+
+The following commands updated Ubuntu packages and installed required development dependencies for Rust and DKLS23 compilation.
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+
+sudo apt install -y \
+    git \
+    build-essential \
+    curl \
+    pkg-config \
+    libssl-dev
+```
+
+### Rust installation
+
+Rust and Cargo were installed using `rustup`.
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
+
+Use the default standard installation when prompted.
+
+After installation, Rust environment variables were loaded into the current shell.
+
+```bash
+source "$HOME/.cargo/env"
+
+rustc --version
+cargo --version
+```
+
+This verified that Rust and Cargo were installed correctly on the VM.
+
+---
+
+## Cloning the DKLS23 fork
+
+The DKLS23 fork containing the custom benchmarking modifications was cloned directly onto the VM.
+
+```bash
+git clone https://github.com/an-cor/dkls23.git
+
+cd dkls23
+
+git checkout angel-local-benchmarks
+
+git branch
+```
+
+The `angel-local-benchmarks` branch contains:
+- custom signing benchmarks
+- repeated signing tests
+- benchmark harnesses
+- local experimental modifications
+
+---
+
+## Building DKLS23
+
+The full project and dependencies were compiled using Cargo.
+
+```bash
+cargo build
+```
+
+This downloaded all Rust crates and successfully built the DKLS23 project on the Jetstream2 VM.
+
+---
+
+## Running DKLS23 examples
+
+### Original signing example
+
+```bash
+cargo run --example sign
+```
+
+This produced a compile-time error because the modified `setup_dsg(...)` function now expects an additional hash argument.
+
+The original example was not updated to reflect the new function signature.
+
+---
+
+### Benchmark example
+
+```bash
+cargo run --example sign_bench
+```
+
+This successfully executed custom benchmarking experiments for:
+- `(n=3, t=2)`
+- `(n=5, t=3)`
+- fixed and random signing modes
+- repeated signing sessions
+
+Observed results:
+- DKG runtime increased significantly as `n` increased
+- Signing runtime remained relatively stable
+- Repeated signing reused the same key shares successfully
+
+---
+
+### Repeated signing example
+
+```bash
+cargo run --example sign_repeat
+```
+
+This successfully demonstrated:
+- reusing one DKG/key generation phase
+- running multiple signing sessions afterward
+- successful signature verification across repeated signing rounds
+
+The output confirmed that threshold signing can reuse previously generated key shares without rerunning DKG every time.
+
+---
+
+## Notes
+
+The VM environment successfully reproduced DKLS23 execution and benchmarking on cloud infrastructure.
+
+This establishes the following workflow:
+
+```text
+MacBook → GitHub fork → Jetstream2 VM → DKLS23 execution
+```
+
+The VM can now later be extended for:
+- multi-VM distributed testing
+- party-to-party networking
+- controller orchestration
+- eventual deployment to Raspberry Pi / ESP32 hardware
