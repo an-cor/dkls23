@@ -12,7 +12,8 @@ struct RelayMessage {
     from: u32,
     to: u32,
     run_id: String,
-    payload: String,
+    payload: Option<String>,
+    payload_b64: Option<String>,
 }
 
 type Tx = mpsc::UnboundedSender<String>;
@@ -80,7 +81,7 @@ async fn handle_client(stream: TcpStream, clients: Clients) -> Result<()> {
 
         println!(
             "relay: run_id={} from={} to={} payload={}",
-            msg.run_id, msg.from, msg.to, msg.payload
+            msg.run_id, msg.from, msg.to, msg.payload.unwrap_or_else(|| "<binary payload>".to_string())
         );
 
         let maybe_tx = clients.lock().await.get(&msg.to).cloned();

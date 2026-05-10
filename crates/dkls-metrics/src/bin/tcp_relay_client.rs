@@ -12,7 +12,8 @@ struct RelayMessage {
     from: u32,
     to: u32,
     run_id: String,
-    payload: String,
+    payload: Option<String>,
+    payload_b64: Option<String>,
 }
 
 #[tokio::main]
@@ -34,7 +35,8 @@ async fn main() -> Result<()> {
         from: id,
         to: id,
         run_id: run_id.clone(),
-        payload: format!("register party {}", id),
+        payload: Some(format!("register party {}", id)),
+        payload_b64: None,
     };
 
     writer
@@ -50,7 +52,8 @@ async fn main() -> Result<()> {
             from: id,
             to,
             run_id: run_id.clone(),
-            payload,
+            payload: Some(payload),
+            payload_b64: None,
         };
 
         let line = serde_json::to_string(&msg)?;
@@ -66,7 +69,7 @@ async fn main() -> Result<()> {
 
         println!(
             "party {} received: run_id={} from={} to={} payload={}",
-            id, msg.run_id, msg.from, msg.to, msg.payload
+            id, msg.run_id, msg.from, msg.to, msg.payload.unwrap_or_else(|| "<binary payload>".to_string())
         );
     }
 
