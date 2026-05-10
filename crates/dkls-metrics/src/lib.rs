@@ -6,6 +6,7 @@ pub mod dsg;
 pub mod flags;
 pub mod key_refresh;
 pub mod relay;
+pub mod tcp_relay_connection;
 
 pub fn dkg_ranks(n: u8, ranks: &[u8]) -> Vec<u8> {
     ranks
