@@ -1701,3 +1701,349 @@ The VM can now later be extended for:
 - party-to-party networking
 - controller orchestration
 - eventual deployment to Raspberry Pi / ESP32 hardware
+
+# Multi-VM Jetstream2 Cluster Setup
+
+## Goal
+
+The goal of this setup was to move from running DKLS23 locally on a single machine to running threshold protocol parties across multiple cloud VMs.
+
+This establishes the infrastructure needed for:
+- distributed threshold ECDSA execution
+- real network communication between parties
+- automated orchestration experiments
+- eventual Raspberry Pi / IoT deployment
+
+---
+
+## VM Cluster Architecture
+
+The distributed setup used:
+
+- 1 controller VM
+- 10 party VMs
+
+The controller VM is responsible for:
+- orchestrating experiments
+- connecting to party VMs through SSH
+- launching protocol executions
+- collecting logs and measurements
+
+The party VMs act as independent threshold protocol participants.
+
+---
+
+## VM Creation
+
+Each VM was created through the Jetstream2 web interface.
+
+### VM configuration
+
+#### Controller VM
+
+- Name: `socioty-controller`
+- Image: `Featured-Ubuntu24`
+- Flavor: `m3.small`
+- SSH key: `angel-macbook`
+- Network: `auto_allocated_network`
+- Public IP: `Automatic`
+
+#### Party VMs
+
+- Names:
+  - `socioty-party-01`
+  - `socioty-party-02`
+  - ...
+  - `socioty-party-10`
+
+All party VMs used:
+- Ubuntu 24
+- `m3.small`
+- automatic public IP assignment
+- `auto_allocated_network`
+
+---
+
+## Important Networking Observation
+
+Using the `public` network initially caused VM creation failures:
+
+```text
+Failed to allocate the network(s)
+```
+
+Switching to:
+
+```text
+auto_allocated_network
+```
+
+resolved the issue and allowed the VMs to launch successfully.
+
+---
+
+## Connecting to VMs
+
+SSH was used to remotely access each VM.
+
+Example:
+
+```bash
+ssh exouser@149.165.171.46
+```
+
+After connecting successfully, commands executed in the terminal were running directly on the remote Jetstream2 VM.
+
+---
+
+## Installing Dependencies
+
+Each VM installed the required development tools.
+
+```bash
+sudo apt update
+
+sudo apt install -y \
+  git \
+  build-essential \
+  curl \
+  pkg-config \
+  libssl-dev \
+  python3 \
+  python3-venv \
+  jq
+```
+
+These packages provide:
+- Rust compilation support
+- cryptographic library support
+- JSON parsing utilities
+- scripting tools for orchestration
+
+---
+
+## Installing Rust
+
+Rust and Cargo were installed using `rustup`.
+
+```bash
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+```
+
+Load the Rust environment:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+Verify installation:
+
+```bash
+rustc --version
+cargo --version
+```
+
+---
+
+## Cloning DKLS23
+
+The DKLS23 benchmarking fork was cloned onto every party VM.
+
+```bash
+git clone https://github.com/an-cor/dkls23.git
+
+cd dkls23
+
+git checkout angel-local-benchmarks
+```
+
+The custom branch contains:
+- DKLS benchmarking code
+- repeated signing experiments
+- measurement harnesses
+- experimental protocol modifications
+
+---
+
+## Building DKLS23
+
+Each VM compiled DKLS23 locally.
+
+```bash
+cargo build --release
+
+cargo build -p dkls-metrics --release
+```
+
+This downloaded dependencies and produced optimized binaries for benchmarking.
+
+---
+
+## Party Environment Configuration
+
+Each party VM created local directories for:
+- protocol logs
+- experiment outputs
+- orchestration results
+
+```bash
+mkdir -p ~/socioty-results/dkls
+mkdir -p ~/socioty-logs
+```
+
+Each party also created a small environment file.
+
+Example for Party 1:
+
+```bash
+cat > ~/party.env <<'EOF'
+PARTY_ID=1
+ROLE=party
+REPO_DIR=/home/exouser/dkls23
+RESULTS_DIR=/home/exouser/socioty-results
+LOG_DIR=/home/exouser/socioty-logs
+EOF
+```
+
+This stores:
+- party identity
+- repository location
+- logging paths
+- results paths
+
+---
+
+## Running DKLS Benchmarks on a Party VM
+
+A benchmark was successfully executed directly on a distributed party VM.
+
+```bash
+cd ~/dkls23
+
+cargo run --example sign_bench
+```
+
+This confirmed that:
+- DKLS executes correctly on remote infrastructure
+- the party VM environment is configured properly
+- benchmarking works outside the local development machine
+
+---
+
+## Controller VM Setup
+
+The controller VM created orchestration directories.
+
+```bash
+mkdir -p ~/socioty-controller
+mkdir -p ~/socioty-results/dkls
+mkdir -p ~/socioty-logs
+```
+
+---
+
+## Cluster Configuration File
+
+The controller stores all VM metadata in:
+
+```text
+~/socioty-controller/parties.json
+```
+
+This file contains:
+- party IDs
+- public IP addresses
+- internal IP addresses
+- usernames
+
+Example entry:
+
+```json
+{
+  "id": 1,
+  "name": "socioty-party-01",
+  "public_ip": "149.165.173.146",
+  "internal_ip": "10.1.20.228",
+  "user": "exouser"
+}
+```
+
+Public IPs are used for SSH access.
+
+Internal IPs are used for low-latency VM-to-VM protocol communication.
+
+---
+
+## Controller SSH Key
+
+The controller VM generated a dedicated orchestration SSH key.
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/socioty_controller_key -N ""
+```
+
+The public key was copied into each party VM’s:
+
+```text
+~/.ssh/authorized_keys
+```
+
+This allows the controller to SSH into parties without passwords.
+
+---
+
+## Verifying SSH Connectivity
+
+The controller created a validation script:
+
+```bash
+~/socioty-controller/check_ssh.sh
+```
+
+The script automatically SSHs into every party VM and verifies:
+- hostname
+- IP addresses
+- working directory
+
+Example output:
+
+```text
+hostname=socioty-party-01-1-of-10
+ips=10.1.20.228 172.17.0.1
+pwd=/home/exouser
+```
+
+This confirmed successful controller-to-party orchestration access.
+
+---
+
+## Verifying Internal Network Communication
+
+The controller also created:
+
+```bash
+~/socioty-controller/check_network.sh
+```
+
+This script pings every party VM using internal Jetstream2 IP addresses.
+
+Example output:
+
+```text
+PING 10.1.20.228
+64 bytes from 10.1.20.228
+```
+
+Observed latency was typically:
+
+```text
+~1–3 ms
+```
+
+This confirmed:
+- all VMs exist on the same internal network
+- low-latency communication is functioning
+- the infrastructure is ready for distributed DKLS execution
+
+---
+
