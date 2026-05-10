@@ -17,7 +17,6 @@ use sl_mpc_mate::coord::{MessageSendError, Relay, Sink, Stream};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RelayWireMessage {
     from: u32,
-    to: Option<u32>,
     run_id: String,
     payload: Option<String>,
     payload_b64: Option<String>,
@@ -42,7 +41,6 @@ impl TcpRelayConnection {
 
         let hello = RelayWireMessage {
             from: party_id,
-            to: Some(party_id),
             run_id: run_id.clone(),
             payload: Some(format!("register party {}", party_id)),
             payload_b64: None,
@@ -58,7 +56,6 @@ impl TcpRelayConnection {
             while let Some(msg) = outbound_rx.recv().await {
                 let wire = RelayWireMessage {
                     from: party_id,
-                    to: None,
                     run_id: write_run_id.clone(),
                     payload: None,
                     payload_b64: Some(general_purpose::STANDARD.encode(msg)),
