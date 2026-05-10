@@ -18,12 +18,14 @@ bench = false
 sl-dkls23 = { path = "../..", features = [ "multi-thread", "test-support" ] }
 msg-relay = { path = "../msg-relay" }
 sl-mpc-mate = { workspace = true }
-tokio = { workspace = true, features = [ "rt", "rt-multi-thread" ] }
+tokio = { workspace = true, features = [ "rt", "rt-multi-thread", "macros", "net", "io-util", "sync", "time" ] }
 tracing-subscriber = { workspace = true, features = [ "fmt" ] }
 rand.workspace = true
 xflags = "0.3"
 anyhow = { workspace = true }
 hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = [ "async_tokio" ]}
