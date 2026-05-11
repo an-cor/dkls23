@@ -2049,25 +2049,335 @@ This confirmed:
 
 # Jetstream DKLS DKG Orchestration
 
-This folder contains the controller-side scripts for running DKLS DKG across Jetstream VMs.
+This section documents the transition from local DKLS23 execution to fully orchestrated distributed DKG execution across Jetstream2 VMs.
 
-## Current status
+The goal of this was to:
+- move DKLS23 from single-machine execution to multi-VM execution
+- build controller-based orchestration
+- automate distributed DKG experiments
+- collect runtime + metrics automatically
+- prepare the system for later DSG and IoT deployment work
 
-DKG-only orchestration is working across 3, 5, and 10 party VMs.
+## Architecture
 
-Verified combinations:
+The orchestration system uses:
 
-- n=3, t=2
-- n=5, t=2
-- n=5, t=3
-- n=10, t=5
-- n=10, t=6
-- n=10, t=7
-- n=10, t=8
+- 1 controller VM
+- multiple party VMs
 
-## Run command
+The controller:
+- launches the relay server
+- starts protocol parties remotely through SSH
+- waits for completion
+- collects metrics and logs
+- stores experiment outputs
 
-From the controller VM:
+The party VMs:
+- run DKLS protocol parties
+- connect through the relay server
+- generate local metrics/logs
+
+---
+
+## Important DKLS Observation
+
+Upstream DKLS23 already contains:
+- DKG implementation
+- DSG implementation
+- relay-based networking model
+- metrics collection support
+
+The orchestration work in this did **not** rewrite the DKLS protocol itself.
+
+Instead, this focused on:
+- distributed deployment
+- remote orchestration
+- automation
+- experiment management
+- metrics collection
+
+---
+
+## Repository Structure
+
+Controller-side orchestration files:
+
+```text
+~/socioty-controller/
+```
+
+Main files:
+
+```text
+parties.json
+run_dkls_dkg.sh
+check_ssh.sh
+check_network.sh
+```
+
+Result storage:
+
+```text
+~/socioty-results/dkls/
+```
+
+---
+
+## Cluster Metadata
+
+The controller stores VM information in:
+
+```text
+~/socioty-controller/parties.json
+```
+
+Each entry contains:
+- party ID
+- VM hostname
+- public IP
+- internal IP
+- username
+
+Example:
+
+```json
+{
+  "id": 1,
+  "name": "socioty-party-01",
+  "public_ip": "149.165.173.146",
+  "internal_ip": "10.1.20.228",
+  "user": "exouser"
+}
+```
+
+Public IPs are used for SSH.
+
+Internal IPs are used for low-latency DKLS communication.
+
+---
+
+## Controller SSH Setup
+
+The controller generated a dedicated orchestration key:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/socioty_controller_key -N ""
+```
+
+The public key was copied to all party VMs.
+
+This enabled:
+- passwordless orchestration
+- automated remote execution
+- scripted experiment control
+
+---
+
+## Connectivity Validation
+
+### SSH validation
+
+Controller script:
+
+```bash
+~/socioty-controller/check_ssh.sh
+```
+
+This verifies:
+- SSH access
+- hostname
+- working directory
+- VM availability
+
+Example output:
+
+```text
+hostname=socioty-party-01-1-of-10
+ips=10.1.20.228 172.17.0.1
+pwd=/home/exouser
+```
+
+---
+
+### Internal network validation
+
+Controller script:
+
+```bash
+~/socioty-controller/check_network.sh
+```
+
+This verifies:
+- internal VM communication
+- low-latency networking
+
+Observed latency:
+
+```text
+~1–3 ms
+```
+
+This confirmed the VMs are correctly connected on the Jetstream internal network.
+
+---
+
+## Relay-Based DKLS Execution
+
+DKLS23 uses a relay-based networking model.
+
+The controller launches:
+- a central TCP relay server
+- multiple remote DKLS parties
+
+Each party:
+- connects to the relay
+- exchanges DKLS protocol messages
+- completes distributed DKG
+
+This matches the upstream DKLS23 execution model.
+
+---
+
+## Main Orchestration Script
+
+Main controller script:
+
+```bash
+~/socioty-controller/run_dkls_dkg.sh
+```
+
+Example:
 
 ```bash
 ~/socioty-controller/run_dkls_dkg.sh 3 2 1
+```
+
+Arguments:
+
+```text
+run_dkls_dkg.sh <n> <t> <trial>
+```
+
+Example:
+
+```text
+n = 3
+t = 2
+trial = 1
+```
+
+---
+
+## What the Script Does
+
+The orchestration script automatically:
+
+1. creates a run ID
+2. creates a results directory
+3. launches the relay server
+4. starts remote DKLS parties through SSH
+5. waits for completion
+6. collects logs + metrics
+7. generates final JSON metadata
+
+---
+
+## Result Directory Structure
+
+Each experiment generates a directory:
+
+```text
+~/socioty-results/dkls/<RUN_ID>/
+```
+
+Example:
+
+```text
+2026-05-10_042427_dkls_n3_t2_dkg_trial3
+```
+
+Contents:
+
+```text
+metrics.json
+relay.log
+party-01/
+party-02/
+party-03/
+```
+
+Each party directory contains:
+- stdout logs
+- stderr logs
+- DKLS metrics output
+- timing information
+
+---
+
+## Metrics Collection
+
+The orchestration framework automatically collects:
+- runtime
+- elapsed protocol time
+- wall clock time
+- memory usage
+- CPU usage
+- protocol status
+- key IDs
+- per-party metrics
+
+Metrics are stored in:
+
+```text
+metrics.json
+```
+
+Example fields:
+
+```json
+{
+  "protocol": "dkls",
+  "operation": "dkg",
+  "n": 3,
+  "t": 2,
+  "status": "success"
+}
+```
+
+Each party records:
+- elapsed_ms
+- wall_time
+- max_rss_kb
+- user_time_sec
+- system_time_sec
+- cpu_percent
+
+---
+
+## Verified DKG Configurations
+
+The following distributed DKG configurations completed successfully:
+
+| n | t |
+|---|---|
+| 3 | 2 |
+| 5 | 2 |
+| 5 | 3 |
+| 10 | 5 |
+| 10 | 6 |
+| 10 | 7 |
+| 10 | 8 |
+
+---
+
+## Important Scaling Observation
+
+Observed behavior during orchestration:
+
+- DKG runtime increases significantly with `n`
+- communication cost dominates runtime
+- higher `t` slightly increases communication
+- orchestration overhead is small compared to protocol execution
+
+The main bottleneck is protocol communication complexity.
+
