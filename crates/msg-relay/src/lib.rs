@@ -231,6 +231,12 @@ impl Inner {
             Kind::Pub
         };
         let id = *hdr.id();
+        eprintln!(
+            "msg-relay handle_message kind={:?} id={:X} len={}",
+            kind,
+            id,
+            msg.len()
+        );
         let ts = Instant::now();
         let msg_expire = ts + hdr.ttl();
 
@@ -289,8 +295,15 @@ impl Inner {
                                 msg.len(),
                                 waiters.len()
                             );
+                            eprintln!(
+                                "msg-relay wake waiters id={:X} waiter_count={} len={}",
+                                id,
+                                waiters.len(),
+                                msg.len()
+                            );
                             // wake up all waiters
                             for (_, tx) in waiters.drain(..) {
+                                eprintln!("msg-relay send ready-to-ask id={:X} len={}", id, msg.len());
                                 let _ = tx.send(msg.clone()); // TODO handle error
                             }
                             // and replace with a Read message
@@ -312,6 +325,7 @@ impl Inner {
                             waiters: vec![(w_id, tx.clone())],
                         });
 
+                        eprintln!("msg-relay add waiter id={:X}", id);
                         tracing::debug!("add-ask {:X} {} 1", id, msg.len());
 
                         if let Some(on_ask_msg) = &self.on_ask_msg {
@@ -321,7 +335,9 @@ impl Inner {
                 } else {
                     tracing::debug!("add-msg {:X} {}", id, msg.len());
 
+                    let msg_len = msg.len();
                     vac.insert(MsgEntry::Ready { msg });
+                    eprintln!("msg-relay store ready id={:X} len={}", id, msg_len);
                 };
 
                 self.cleanup_later(id, msg_expire, kind);

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use dkls_metrics::tcp_relay_connection::TcpRelayConnection;
-use sl_dkls23::keygen::Keyshare;
+use sl_dkls23::{keygen::Keyshare, sign};
 use std::{env, sync::Arc, time::Instant};
 
 #[tokio::main]
@@ -10,19 +10,17 @@ async fn main() -> Result<()> {
     let t: u8 = required_arg("--t")?.parse()?;
     let relay_addr = required_arg("--relay")?;
     let run_id = required_arg("--run-id")?;
-    let share_path = required_arg("--share")?;
+    let share_dir = required_arg("--share-dir")?;
 
     if id == 0 || id > n {
         return Err(anyhow!("party id must be in range 1..=n"));
     }
 
     println!(
-        "dkls_sign_party starting: id={} n={} t={} relay={} run_id={} share={}",
-        id, n, t, relay_addr, run_id, share_path
+        "dkls_sign_party starting: id={} n={} t={} relay={} run_id={} share_dir={}",
+        id, n, t, relay_addr, run_id, share_dir
     );
 
-    // Phase 6B first version: fixed signer set.
-    // For n=3,t=2, all three parties sign.
     let signer_ids: Vec<u8> = arg_value("--signer-ids")
         .unwrap_or_else(|| "1,2,3".to_string())
         .split(',')
@@ -33,60 +31,80 @@ async fn main() -> Result<()> {
         return Err(anyhow!("party {} is not in signer set {:?}", id, signer_ids));
     }
 
-    // Load this party's DKG share.
-    // dkls_party wrote keyshare.as_slice(), so use Keyshare::from_bytes().
-    let share_bytes = std::fs::read(&share_path)?;
-    let my_share = Arc::new(
-        Keyshare::from_bytes(&share_bytes)
-            .ok_or_else(|| anyhow!("failed to decode keyshare from {}", share_path))?,
-    );
+    let out_dir = format!("/home/exouser/socioty-results/dkls/{}", run_id);
+    std::fs::create_dir_all(&out_dir)?;
 
-    println!(
-        "loaded share: id={} key_id={}",
-        id,
-        hex::encode(my_share.key_id)
-    );
+    let mut shares: Vec<Arc<Keyshare>> = Vec::new();
 
-    // IMPORTANT:
-    // sign::setup_dsg expects the signer subset, not just this party's share.
-    // For a distributed signer, each party only owns its own share, but the helper
-    // may require the full subset to construct all setup messages.
-    //
-    // Next step is to inspect crates/dkls-metrics/src/dsg.rs and src/sign/mod.rs
-    // to confirm whether we need:
-    //   A) all signer shares on every VM, or
-    //   B) a way to construct only this party's SetupMessage from its local share.
-    //
-    // The relay connection is ready for when we wire sign::run.
-    let _relay = TcpRelayConnection::connect(id as u32, relay_addr, run_id.clone()).await?;
+    for signer_id in &signer_ids {
+        let path = format!(
+            "{}/party-{:02}/party-{}.share",
+            share_dir, signer_id, signer_id
+        );
+
+        println!("loading signer share {}", path);
+
+        let bytes = std::fs::read(&path)?;
+        let share = Arc::new(
+            Keyshare::from_bytes(&bytes)
+                .ok_or_else(|| anyhow!("failed decoding share {}", path))?,
+        );
+
+        shares.push(share);
+    }
+
+    println!("loaded {} signer shares", shares.len());
+
+    let key_id = hex::encode(shares[0].key_id);
+    println!("signing key_id={}", key_id);
 
     let start = Instant::now();
 
-    // TODO Phase 6B:
-    // let (setup, seed) = ...
-    // let signature = sign::run(setup, seed, relay).await?;
+    let setups = sign::setup_dsg(None, &shares, "m");
+    println!("constructed {} DSG setups", setups.len());
+
+    let my_index = signer_ids
+        .iter()
+        .position(|v| *v == id)
+        .ok_or_else(|| anyhow!("could not find my signer index"))?;
+
+    let (setup, seed) = setups
+        .into_iter()
+        .nth(my_index)
+        .ok_or_else(|| anyhow!("missing setup for signer"))?;
+
+    println!("party {} selected DSG setup index {}", id, my_index);
+
+    let relay_party_id = my_index as u32;
+
+    let relay = TcpRelayConnection::connect(relay_party_id, relay_addr, run_id.clone()).await?;
+
+    let signature = sign::run(setup, seed, relay).await?;
 
     let elapsed = start.elapsed();
 
-    let out_dir = format!("/home/exouser/socioty-results/dkls/{}", run_id);
-    std::fs::create_dir_all(&out_dir)?;
+    println!("party {} completed signing", id);
+
+    let sig_path = format!("{}/party-{}.signature.txt", out_dir, id);
+    std::fs::write(&sig_path, format!("{:?}", signature))?;
 
     let metrics_path = format!("{}/party-{}.sign.metrics.txt", out_dir, id);
     std::fs::write(
         &metrics_path,
         format!(
-            "party_id={}\nn={}\nt={}\nrun_id={}\nkey_id={}\nsigner_ids={:?}\nelapsed_ms={}\nstatus=skeleton_loaded_share\n",
+            "party_id={}\nn={}\nt={}\nrun_id={}\nkey_id={}\nsigner_ids={:?}\nelapsed_ms={}\nstatus=sign_completed\n",
             id,
             n,
             t,
             run_id,
-            hex::encode(my_share.key_id),
+            key_id,
             signer_ids,
             elapsed.as_millis()
         ),
     )?;
 
-    println!("wrote sign metrics skeleton to {}", metrics_path);
+    println!("wrote signature to {}", sig_path);
+    println!("wrote sign metrics to {}", metrics_path);
 
     Ok(())
 }

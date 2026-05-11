@@ -96,6 +96,8 @@ impl TcpRelayConnection {
                         if let Some(payload_b64) = wire.payload_b64 {
                             match general_purpose::STANDARD.decode(payload_b64) {
                                 Ok(bytes) => {
+                                    eprintln!("tcp client received bytes={}", bytes.len());
+
                                     if inbound_tx.send(bytes).is_err() {
                                         break;
                                     }
@@ -148,6 +150,8 @@ impl Sink<Vec<u8>> for TcpRelayConnection {
         self: Pin<&mut Self>,
         item: Vec<u8>,
     ) -> Result<(), Self::Error> {
+        eprintln!("tcp client start_send bytes={}", item.len());
+
         self.get_mut()
             .outbound_tx
             .send(item)
