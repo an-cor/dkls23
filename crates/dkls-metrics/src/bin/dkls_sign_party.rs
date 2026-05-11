@@ -60,7 +60,14 @@ async fn main() -> Result<()> {
 
     let start = Instant::now();
 
-    let setups = sign::setup_dsg(None, &shares, "m");
+    let mut instance = [0u8; 32];
+
+    for (i, byte) in run_id.as_bytes().iter().enumerate() {
+        instance[i % 32] ^= *byte;
+    }
+
+    let setups = sign::setup_dsg(Some(instance), &shares, "m");
+    //let setups = sign::setup_dsg(None, &shares, "m");
     println!("constructed {} DSG setups", setups.len());
 
     let my_index = signer_ids
