@@ -34,6 +34,7 @@ def main():
         dkg_elapsed = [p.get("elapsed_ms") for p in dkg_parties]
         dkg_rss = [p.get("max_rss_kb") for p in dkg_parties]
         dsg_elapsed = [p.get("elapsed_ms") for p in dsg_parties]
+        dsg_rss = [p.get("max_rss_kb") for p in dsg_parties]
 
         rows.append({
             "run_id": d.get("run_id"),
@@ -51,6 +52,8 @@ def main():
             "dkg_party_max_rss_kb": max_or_none(dkg_rss),
             "dsg_party_avg_elapsed_ms": dsg.get("elapsed_ms_avg") or avg(dsg_elapsed),
             "dsg_party_max_elapsed_ms": dsg.get("elapsed_ms_max") or max_or_none(dsg_elapsed),
+            "dsg_party_avg_rss_kb": dsg.get("avg_rss_kb") or avg(dsg_rss),
+            "dsg_party_max_rss_kb": dsg.get("max_rss_kb") or max_or_none(dsg_rss),
             "metrics_path": str(metrics_path),
         })
 
@@ -70,6 +73,8 @@ def main():
         "dkg_party_max_rss_kb",
         "dsg_party_avg_elapsed_ms",
         "dsg_party_max_elapsed_ms",
+        "dsg_party_avg_rss_kb",
+        "dsg_party_max_rss_kb",
         "metrics_path",
     ]
 

@@ -54,7 +54,9 @@ PIDS=()
 for ((i=1; i<=SIGNER_COUNT; i++)); do
   echo "Starting DSG signer party $i..."
 
-  timeout 60s "$HOME/dkls23/target/release/dkls_sign_party" \
+  timeout 60s /usr/bin/time -v \
+    -o "$DSG_RUN_DIR/party-${i}.time.txt" \
+    "$HOME/dkls23/target/release/dkls_sign_party" \
     --id "$i" --n "$N" --t "$T" \
     --relay 127.0.0.1:9100 \
     --run-id "$MASTER_RUN_ID/dsg" \
@@ -126,10 +128,49 @@ def parse_kv(path: Path) -> dict:
             data[k.strip()] = v.strip()
     return data
 
+def parse_time_file(path: Path) -> dict:
+    import re
+
+    if not path.exists():
+        return {
+            "wall_time": None,
+            "max_rss_kb": None,
+            "user_time_sec": None,
+            "system_time_sec": None,
+            "cpu_percent": None,
+        }
+
+    text = path.read_text()
+
+    def find(pattern):
+        m = re.search(pattern, text)
+        return m.group(1).strip() if m else None
+
+    def to_float(x):
+        try:
+            return float(x) if x not in (None, "") else None
+        except ValueError:
+            return None
+
+    def to_int(x):
+        try:
+            return int(x) if x not in (None, "") else None
+        except ValueError:
+            return None
+
+    return {
+        "wall_time": find(r"Elapsed \(wall clock\) time.*\):\s*(.+)"),
+        "max_rss_kb": to_int(find(r"Maximum resident set size \(kbytes\):\s*(\d+)")),
+        "user_time_sec": to_float(find(r"User time \(seconds\):\s*([0-9.]+)")),
+        "system_time_sec": to_float(find(r"System time \(seconds\):\s*([0-9.]+)")),
+        "cpu_percent": find(r"Percent of CPU this job got:\s*(.+)"),
+    }
+
 dsg_parties = []
 
 for party_id in signer_ids:
     metrics = parse_kv(dsg_dir / f"party-{party_id}.sign.metrics.txt")
+    timing = parse_time_file(dsg_dir / f"party-{party_id}.time.txt")
 
     elapsed_ms = metrics.get("elapsed_ms")
     try:
@@ -143,9 +184,11 @@ for party_id in signer_ids:
         "elapsed_ms": elapsed_ms,
         "status": metrics.get("status"),
         "signature_path": str(dsg_dir / f"party-{party_id}.signature.txt"),
+        **timing,
     })
 
 elapsed_values = [p["elapsed_ms"] for p in dsg_parties if p["elapsed_ms"] is not None]
+rss_values = [p["max_rss_kb"] for p in dsg_parties if p.get("max_rss_kb") is not None]
 
 dsg_metrics = {
     "status": status,
@@ -154,6 +197,8 @@ dsg_metrics = {
     "parties": dsg_parties,
     "elapsed_ms_avg": round(sum(elapsed_values) / len(elapsed_values), 2) if elapsed_values else None,
     "elapsed_ms_max": max(elapsed_values) if elapsed_values else None,
+    "max_rss_kb": max(rss_values) if rss_values else None,
+    "avg_rss_kb": round(sum(rss_values) / len(rss_values), 2) if rss_values else None,
 }
 
 combined = {
