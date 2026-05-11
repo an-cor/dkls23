@@ -46,6 +46,7 @@ source "$HOME/.cargo/env"
 /usr/bin/time -v -o "$RUN_DIR/controller_time.txt" \
   "$REPO/target/release/tcp_relay_server" \
   --bind "$RELAY_IP:$RELAY_PORT" \
+  --expected-parties "$N" \
   > "$RUN_DIR/controller.log" \
   2> "$RUN_DIR/controller.err" &
 
