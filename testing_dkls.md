@@ -2381,3 +2381,333 @@ Observed behavior during orchestration:
 
 The main bottleneck is protocol communication complexity.
 
+# DKLS Base Matrix
+
+---
+
+## DKG-only matrix
+
+### Completed
+
+Ran distributed DKLS DKG successfully on Jetstream VMs for:
+
+- (3,2)
+- (5,2)
+- (5,3)
+- (10,5)
+- (10,6)
+- (10,7)
+- (10,8)
+
+### Main orchestration script
+
+```bash
+~/socioty-controller/run_dkls_dkg.sh
+```
+
+### Example commands
+
+```bash
+~/socioty-controller/run_dkls_dkg.sh 3 2 1
+~/socioty-controller/run_dkls_dkg.sh 5 3 1
+~/socioty-controller/run_dkls_dkg.sh 10 8 1
+```
+
+### Outputs
+
+Per-run directories:
+
+```text
+~/socioty-results/dkls/<RUN_ID>/
+```
+
+Example layout:
+
+```text
+controller.log
+controller.err
+controller_time.txt
+metadata.json
+metrics.json
+party-01/
+party-02/
+...
+```
+
+### Metrics captured
+
+- controller wall time
+- per-party elapsed_ms
+- per-party RSS memory
+- CPU %
+- user/system time
+- key_id
+- logs
+
+### CSV export
+
+```bash
+~/dkls23/scripts/analysis/export_phase6d_csv.py
+```
+
+---
+
+## DSG party runner
+
+### Completed
+
+Created distributed signing binary:
+
+```text
+crates/dkls-metrics/src/bin/dkls_sign_party.rs
+```
+
+### Features added
+
+- loads persisted DKG shares
+- selects signer subset
+- runs `sign::run(...)`
+- uses `TcpRelayConnection`
+- writes signing metrics
+- writes signature artifacts
+- supports distributed TCP relay execution
+
+### DKG share persistence
+
+Added share persistence in:
+
+```text
+crates/dkls-metrics/src/bin/dkls_party.rs
+```
+
+Generated files:
+
+```text
+party-1.share
+party-2.share
+party-3.share
+...
+```
+
+### Relay fixes
+
+Updated:
+
+```text
+crates/dkls-metrics/src/bin/tcp_relay_server.rs
+```
+
+Fixed TCP relay behavior to preserve DKLS `MsgRelay` semantics across network clients.
+
+### Signing test command
+
+```bash
+timeout 60s ~/dkls23/target/release/dkls_sign_party \
+  --id 1 \
+  --n 3 \
+  --t 2 \
+  --relay 127.0.0.1:9100 \
+  --run-id test_sign \
+  --share-dir "$RUN_DIR" \
+  --signer-ids 1,2,3
+```
+
+### Signing outputs
+
+```text
+party-1.sign.metrics.txt
+party-1.signature.txt
+party-1.time.txt
+party-1.stdout.log
+party-1.stderr.log
+```
+
+### Signing metrics captured
+
+- elapsed_ms
+- signature output
+- max RSS memory
+- CPU %
+- wall time
+- user/system time
+
+---
+
+## Combined DKG + DSG orchestration
+
+### Completed
+
+Created combined orchestration script:
+
+```bash
+~/socioty-controller/run_dkls_dkg_dsg.sh
+```
+
+### Flow
+
+1. Run distributed DKG
+2. Collect shares
+3. Start fresh DSG relay
+4. Run threshold signing
+5. Collect signing artifacts
+6. Aggregate metrics
+
+### Example commands
+
+```bash
+~/socioty-controller/run_dkls_dkg_dsg.sh 3 2 1
+~/socioty-controller/run_dkls_dkg_dsg.sh 5 3 1
+~/socioty-controller/run_dkls_dkg_dsg.sh 10 8 1
+```
+
+### Run structure
+
+```text
+run/
+  dkg/
+  dsg/
+  metrics.json
+```
+
+### Added generalized signer handling
+
+Dynamic signer count:
+
+```bash
+SIGNER_COUNT=$((T + 1))
+```
+
+Dynamic signer IDs:
+
+```bash
+SIGNER_IDS="$(seq -s, 1 $SIGNER_COUNT)"
+```
+
+Examples:
+
+```text
+(3,2)  -> 1,2,3
+(5,3)  -> 1,2,3,4
+(10,8) -> 1,2,3,4,5,6,7,8,9
+```
+
+---
+
+## Full DKG + DSG matrix
+
+### Completed
+
+Ran distributed DKG + DSG matrix for:
+
+- (3,2)
+- (5,2)
+- (5,3)
+- (10,5)
+- (10,6)
+- (10,7)
+- (10,8)
+
+### Multiple trials
+
+Ran multiple trials for stability and scaling analysis.
+
+### Combined metrics
+
+Combined metrics file:
+
+```text
+metrics.json
+```
+
+Includes:
+
+- DKG metrics
+- DSG metrics
+- signer IDs
+- runtime
+- memory
+- status
+- signature outputs
+
+### DSG memory support
+
+Added DSG RSS parsing from:
+
+```text
+party-X.time.txt
+```
+
+Captured:
+
+- max_rss_kb
+- wall_time
+- user_time_sec
+- system_time_sec
+- cpu_percent
+
+### Example DSG metrics
+
+```json
+{
+  "dsg_avg_ms": 112.67,
+  "dsg_max_ms": 126,
+  "dsg_avg_rss_kb": 4990.67,
+  "dsg_max_rss_kb": 5288
+}
+```
+
+### CSV export summary
+
+Generated:
+
+```text
+~/socioty-results/dkls/dkls_dkg_dsg_phase6d_summary.csv
+```
+
+View summary:
+
+```bash
+python3 ~/dkls23/scripts/analysis/export_phase6d_csv.py
+```
+
+---
+
+## Important notes
+
+### used
+
+Current implementation uses:
+
+- each signer loads all signer shares locally
+- each signer selects its own DSG setup
+
+This was used for orchestration simplicity and proof-of-concept validation.
+
+### deferred
+
+Intentionally deferred.
+
+Future improvement:
+
+- each signer loads only its own share
+- signer setup built from local share + public signer metadata
+
+This would improve cryptographic isolation and deployment realism.
+
+---
+
+## Main files created or modified
+
+```text
+~/socioty-controller/run_dkls_dkg.sh
+~/socioty-controller/run_dkls_dkg_dsg.sh
+
+crates/dkls-metrics/src/bin/dkls_party.rs
+crates/dkls-metrics/src/bin/dkls_sign_party.rs
+crates/dkls-metrics/src/bin/tcp_relay_server.rs
+
+scripts/jetstream/run_dkls_dkg.sh
+scripts/jetstream/run_dkls_dkg_dsg.sh
+
+scripts/analysis/export_phase6d_csv.py
+```
