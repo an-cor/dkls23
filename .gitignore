@@ -4,3 +4,11 @@
 data
 ./idea/**
 .DS_Store
+
+# Jetstream / SocIoTy local secrets and results
+socioty-results/
+*.share
+*.share.bin
+*.pem
+*_controller_key
+parties.json

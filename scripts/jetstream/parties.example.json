@@ -1,0 +1,11 @@
+{
+  "parties": [
+    {
+      "id": 1,
+      "name": "socioty-party-01",
+      "user": "exouser",
+      "public_ip": "X.X.X.X",
+      "internal_ip": "10.X.X.X"
+    }
+  ]
+}
