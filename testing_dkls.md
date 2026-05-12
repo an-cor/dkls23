@@ -2711,3 +2711,344 @@ scripts/jetstream/run_dkls_dkg_dsg.sh
 
 scripts/analysis/export_phase6d_csv.py
 ```
+
+## DKLS23 Jetstream Benchmark Reproduction Guide
+
+This document explains how to reproduce the distributed DKLS23 benchmarking experiments .
+
+---
+
+## Environment
+
+### VM Configuration
+
+All experiments were performed using Jetstream2 Ubuntu VMs.
+
+Recommended configuration:
+
+- Image: `Featured-Ubuntu24`
+- Flavor: `m3.small`
+- Internal networking enabled
+- Public IP enabled
+- Rust toolchain installed
+- DKLS23 repository cloned
+
+---
+
+## Repository Setup
+
+Clone the repository:
+
+```bash
+git clone https://github.com/an-cor/dkls23.git
+cd dkls23
+```
+
+Checkout the benchmarking branch:
+
+```bash
+git checkout angel-local-benchmarks
+```
+
+Build release binaries:
+
+```bash
+cargo build --release -p dkls-metrics --bins
+```
+
+---
+
+## Controller Scripts
+
+Jetstream orchestration scripts are located in:
+
+```text
+scripts/jetstream/
+```
+
+Main scripts:
+
+```text
+run_dkls_dkg.sh
+run_dkls_dkg_dsg.sh
+run_dkls_dsg_round.sh
+run_dkls_multisign.sh
+run_dkls_multisign_matrix.sh
+```
+
+---
+
+## VM Topology
+
+Experiments use:
+
+- 1 controller VM
+- multiple party VMs
+
+The controller:
+- launches the relay
+- SSHes into party VMs
+- launches protocol parties
+- collects metrics/logs
+- aggregates results
+
+Party VMs connect to the controller relay over the Jetstream internal network.
+
+---
+
+## DKLS Benchmark Matrix
+
+benchmarks:
+- DKG only
+- DKG + DSG
+
+across multiple `(n,t)` combinations.
+
+### Example DKG Run
+
+```bash
+./scripts/jetstream/run_dkls_dkg.sh 3 2 1
+```
+
+Arguments:
+
+```text
+N T TRIAL
+```
+
+Example:
+
+```text
+N=3
+T=2
+TRIAL=1
+```
+
+---
+
+### Example DKG + DSG Run
+
+```bash
+./scripts/jetstream/run_dkls_dkg_dsg.sh 5 3 1
+```
+
+---
+
+### Matrix
+
+Recommended matrix:
+
+```text
+(3,2)
+(5,2)
+(5,3)
+(10,5)
+(10,6)
+(10,7)
+(10,8)
+```
+
+For each:
+- DKG only
+- DKG + DSG
+- 2–3 trials recommended
+
+---
+
+## Multiple Signature Experiments
+
+evaluates repeated signing using a single DKG/key generation.
+
+The experiment performs:
+1. one DKG
+2. repeated DSG signing rounds
+3. metrics aggregation
+
+---
+
+## Fixed Signer Mode
+
+Example:
+
+```bash
+./scripts/jetstream/run_dkls_multisign.sh 3 2 5 fixed 1
+```
+
+Arguments:
+
+```text
+N T SIGNATURES MODE TRIAL
+```
+
+Example meaning:
+
+```text
+N=3
+T=2
+5 signatures
+fixed signer set
+trial 1
+```
+
+Fixed mode always uses signer set:
+
+```text
+1..(t+1)
+```
+
+---
+
+## Random Signer Mode
+
+Example:
+
+```bash
+./scripts/jetstream/run_dkls_multisign.sh 5 3 10 random 1
+```
+
+Random mode:
+- performs one DKG
+- randomly selects `t+1` signers per round
+- records signer subsets per round
+
+---
+
+## Matrix Automation
+
+Run the full multisign benchmark matrix:
+
+```bash
+./scripts/jetstream/run_dkls_multisign_matrix.sh 1
+```
+
+This executes:
+
+```text
+(3,2), signatures 1,5,10, fixed
+(3,2), signatures 1,5,10, random
+(5,3), signatures 1,5,10, fixed
+(5,3), signatures 1,5,10, random
+```
+
+---
+
+## Metrics Collected
+
+Each experiment records:
+
+```text
+run_id
+n
+t
+signer_count
+mode
+signatures_per_keygen
+dkg_time
+sign_round_times
+total_sign_time
+avg_sign_time
+max_rss_per_party
+controller_wall_ms
+signer_ids_per_round
+successful_rounds
+failed_rounds
+```
+
+---
+
+## Result Directory Structure
+
+Each experiment creates a unique run directory:
+
+```text
+~/socioty-results/dkls/<run_id>/
+```
+
+Example:
+
+```text
+2026-05-12_042146_dkls_n5_t3_multisign_10_random_trial1/
+```
+
+Contents:
+
+```text
+metrics.json
+metadata.json
+dkg/
+sign_round_01/
+sign_round_02/
+...
+```
+
+Each sign round contains:
+- relay logs
+- per-party logs
+- per-party timing metrics
+- per-party RSS metrics
+
+---
+
+## Matrix Results
+
+matrix runs generate:
+
+```text
+summary.csv
+runs.txt
+```
+
+inside:
+
+```text
+~/socioty-results/dkls/<matrix_run_id>/
+```
+
+Example:
+
+```text
+2026-05-12_035249_dkls_phase7c_multisign_matrix_trial1/
+```
+
+`summary.csv` contains aggregated experiment metrics suitable for:
+- plotting
+- statistical analysis
+- protocol comparison
+- paper tables
+
+---
+
+## Backup and Export
+
+To export all results:
+
+```bash
+mkdir -p ~/exports/dkls-phase7
+
+cp -r ~/socioty-results/dkls/*_dkls_phase7c_multisign_matrix_trial1 \
+  ~/exports/dkls-phase7/
+
+cp -r ~/socioty-results/dkls/*_multisign_* \
+  ~/exports/dkls-phase7/
+
+cd ~/exports
+
+tar -czf dkls-phase7-results.tar.gz dkls-phase7
+```
+
+Download locally:
+
+```bash
+scp exouser@<controller-public-ip>:~/exports/dkls-phase7-results.tar.gz .
+```
+
+---
+
+## Notes
+
+- Signing uses `t+1` parties, not all `n`.
+- DKG dominates total runtime cost.
+- Repeated signing remains relatively stable after key generation.
+- Random signer mode evaluates dynamic signer subset behavior.
+- Relay readiness checks were required for reliable orchestration.
+- Per-round relay isolation was implemented using randomized relay ports.
